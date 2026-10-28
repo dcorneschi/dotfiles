@@ -1,0 +1,646 @@
+# Load it from ~/.bashrc:  [ -f ~/.bash_aliases ] && source ~/.bash_aliases
+
+# ======================================================================
+# Navigation and Quality of Life
+# ======================================================================
+# Safer rm/mv/cp (prompt before overwrite)
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+alias ln='ln -i'
+
+# Quick directory jumps
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
+alias .....='cd ../../../..'
+alias ~='cd ~'
+alias -- -='cd -'            # "--" because the alias name starts with a dash
+
+# Up N directories: up 3 = cd ../../..
+up() {
+  local n=${1:-1} d=
+  case "$n" in ''|*[!0-9]*) echo "Usage: up [levels]" >&2; return 2 ;; esac
+  while [ "$n" -gt 0 ]; do d="../$d"; n=$((n - 1)); done
+  cd -- "${d:-.}"
+}
+
+# List variants (GNU vs BSD/macOS)
+if ls --group-directories-first >/dev/null 2>&1; then
+  alias l='ls -lah --color=auto --group-directories-first'
+  alias ll='ls -lAh --color=auto --group-directories-first'
+  alias la='ls -A --color=auto --group-directories-first'
+  alias lt='ls -ltr --color=auto'
+else
+  alias l='ls -lahG'
+  alias ll='ls -lAhG'
+  alias la='ls -AG'
+  alias lt='ls -ltrG'
+fi
+
+# Colored grep by default
+alias grep='grep --color=auto'
+alias egrep='grep -E --color=auto'
+alias fgrep='grep -F --color=auto'
+
+# Human-friendly sizes
+alias df='df -h'
+alias du='du -h'
+
+# Show PATH entries one per line
+alias path='printf "%s\n" "$PATH" | tr : "\n"'
+
+# Reload shell config (tries common locations)
+alias reload='source ~/.bashrc 2>/dev/null || source ~/.bash_profile 2>/dev/null || source ~/.profile 2>/dev/null'
+
+# Quick edit common files
+alias ebash='${EDITOR:-nano} ~/.bashrc'
+alias ealias='${EDITOR:-nano} ~/.bash_aliases'
+
+# Misc
+alias c='clear'
+alias x='exit'
+alias now='date +"%Y-%m-%d %H:%M:%S"'
+alias today='date "+%Y-%m-%d"'
+alias cal='cal -3'
+alias count='wc -l'
+alias j='jobs -l'
+alias vi='vim'
+alias v='vim'
+alias view='vim -R'          # Read-only
+alias less='less -SR'        # Don't wrap long lines (-S), show colors (-R)
+command -v tree >/dev/null 2>&1 && alias tree='tree -C'
+command -v colordiff >/dev/null 2>&1 && alias diff='colordiff'
+
+# Clear the shell history (current session and ~/.bash_history)
+alias ch='history -c && history -w'
+
+# Run as root
+alias root='sudo -i'         # Same as "sudo su -", without the extra su
+
+# ======================================================================
+# Git Branch in the Prompt
+# ======================================================================
+# Branch with status marks: ● staged, ✎ modified, + untracked, ✗ deleted
+git_prompt() {
+  local branch st ind=""
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null) || return
+  st=$(git status --porcelain 2>/dev/null)
+  grep -q '^[MARC]' <<< "$st" && ind+="●"
+  grep -q '^.M' <<< "$st" && ind+="✎"
+  grep -q '^??' <<< "$st" && ind+="+"
+  grep -q '^D\|^.D' <<< "$st" && ind+="✗"
+  printf ' \001\e[1;36m\002(%s%s)\001\e[0m\002' "$branch" "${ind:+ $ind}"
+}
+
+export PS1='[\[\e[1;32m\]\u@\[\e[1;33m\]\h \[\e[38;5;211m\]\W\[\e[0m\]]$(git_prompt)\$ '
+
+# ======================================================================
+# Less Colors for Man Pages
+# ======================================================================
+export LESS_TERMCAP_mb=$'\E[01;31m'      # Blink: bold red
+export LESS_TERMCAP_md=$'\E[01;31m'      # Bold: bold red (headings, options)
+export LESS_TERMCAP_me=$'\E[0m'
+export LESS_TERMCAP_se=$'\E[0m'
+export LESS_TERMCAP_so=$'\E[01;44;33m'   # Standout: yellow on blue (status line, search hits)
+export LESS_TERMCAP_ue=$'\E[0m'
+export LESS_TERMCAP_us=$'\E[01;32m'      # Underline: bold green (arguments)
+export GROFF_NO_SGR=1                     # Needed on some distributions (Fedora, Arch) for the colors to apply
+
+# ======================================================================
+# History Settings
+# ======================================================================
+export HISTTIMEFORMAT='%Y-%m-%d %H:%M:%S - '   # Timestamps in "history" output
+shopt -s histappend                            # Append to ~/.bash_history instead of overwriting it
+shopt -s cmdhist                               # Save multi-line commands as one entry
+HISTSIZE=100000                                # Commands kept in memory
+HISTFILESIZE=100000                            # Commands kept in the file
+HISTCONTROL=ignoreboth                         # Skip duplicates and commands starting with a space
+#HISTCONTROL=ignoreboth:erasedups              # Also remove older duplicates
+HISTIGNORE='ls:bg:fg:history'                  # Never record these
+
+# Share history between open terminals: save each command right away (-a), read others' (-n).
+# The case check keeps "reload" from adding it again every time.
+case "$PROMPT_COMMAND" in
+  *"history -a; history -n"*) ;;
+  *) PROMPT_COMMAND="history -a; history -n${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
+esac
+
+# ======================================================================
+# Shell Options
+# ======================================================================
+shopt -s cdspell                 # Autocorrect small typos in cd arguments (cd /ect -> /etc)
+if ((BASH_VERSINFO[0] >= 4)); then
+  shopt -s dirspell              # Same for directory names during tab completion
+  shopt -s autocd                # Type a directory name to cd into it
+  shopt -s globstar              # ** matches files in all subdirectories
+fi
+
+# ======================================================================
+# PATH
+# ======================================================================
+# Add a directory once: in front, or at the end with "after"
+path_add() {
+  case ":$PATH:" in
+    *":$1:"*) ;;
+    *) if [ "$2" = after ]; then PATH="$PATH:$1"; else PATH="$1:$PATH"; fi ;;
+  esac
+}
+
+# Your own script directories (use $HOME: "~" isn't expanded inside double quotes)
+path_add "$HOME/scripts"
+path_add "$HOME/bin" after
+path_add "$HOME/.local/bin" after
+export PATH
+
+# ======================================================================
+# Sudo Helpers
+# ======================================================================
+# If user is not root, pass these commands via sudo
+if [ "$UID" -ne 0 ]; then
+  alias reboot='sudo reboot'
+  command -v apt-get >/dev/null 2>&1 && alias apt-get='sudo apt-get'
+  command -v yum >/dev/null 2>&1 && alias yum='sudo yum'
+fi
+
+# ======================================================================
+# Create directory and cd into it
+# ======================================================================
+mkcd() { mkdir -p -- "$1" && cd -- "$1"; }
+
+# ======================================================================
+# Open current directory in file explorer (cross-platform)
+# ======================================================================
+open_here() {
+  if command -v xdg-open >/dev/null 2>&1; then xdg-open . >/dev/null 2>&1 &
+  elif command -v open >/dev/null 2>&1; then open .
+  elif command -v explorer.exe >/dev/null 2>&1; then explorer.exe .
+  else printf 'No known opener found.\n' >&2; return 1; fi
+}
+
+# ======================================================================
+# Extract any archive format
+# ======================================================================
+extract() {
+  if [ -f "$1" ]; then
+    case "$1" in
+      *.tar.bz2)  tar xjf "$1"   ;;
+      *.tar.gz)   tar xzf "$1"   ;;
+      *.tar.xz)   tar xJf "$1"   ;;
+      *.tar.zst)  tar --use-compress-program=unzstd -xf "$1" ;;
+      *.bz2)      bunzip2 "$1"   ;;
+      *.rar)      if command -v unrar >/dev/null 2>&1; then unrar x "$1"; else bsdtar -xf "$1"; fi ;;
+      *.gz)       gunzip "$1"    ;;
+      *.tar)      tar xf "$1"    ;;
+      *.tbz2)     tar xjf "$1"   ;;
+      *.tgz)      tar xzf "$1"   ;;
+      *.zip)      unzip "$1"     ;;
+      *.7z)       7z x "$1"      ;;
+      *.xz)       unxz "$1"      ;;
+      *.zst)      unzstd "$1"    ;;
+      *.Z)        uncompress "$1" ;;
+      *)          echo "cannot extract '$1'" ;;
+    esac
+  else
+    echo "'$1' is not a valid file"
+  fi
+}
+
+# ======================================================================
+# Find and kill process by name
+# ======================================================================
+killp() {
+  [ -n "$1" ] || { echo "Usage: killp <pattern>" >&2; return 1; }
+  pgrep -af -- "$1" || { echo "No process matches $1" >&2; return 1; }
+  pkill -f -- "$1"
+}
+
+# ======================================================================
+# Quick backup with timestamp
+# ======================================================================
+backup() {
+  cp "$1"{,.backup-$(date +%Y%m%d_%H%M%S)}
+}
+
+# ======================================================================
+# Find large files in current directory
+# ======================================================================
+bigfiles() {
+  du -ah . 2>/dev/null | sort -h | tail -n 50
+}
+
+# ======================================================================
+# Quick HTTP server with optional port
+# ======================================================================
+serve() {
+  local port=${1:-8000} py
+  py=$(command -v python3 || command -v python) || { echo "python not found" >&2; return 1; }
+  "$py" -m http.server --bind 127.0.0.1 "$port"
+}
+
+# ======================================================================
+# Stopwatch
+# ======================================================================
+stopwatch() {
+  local date1 date2
+  date1=$(date +%s)
+  read -rp "Press Enter to stop"
+  date2=$(date +%s)
+  echo $((date2 - date1)) 'seconds'
+}
+
+# ======================================================================
+# Decode and encode base64
+# ======================================================================
+decode() { echo "$1" | base64 -d; echo; }
+encode() { printf '%s' "$1" | base64; }
+
+# ======================================================================
+# History and Sudo Helpers
+# ======================================================================
+# Repeat last command with sudo
+alias please='sudo bash -c "$(fc -ln -1)"'
+
+# History search
+alias h='history'
+alias hg='history | grep'
+
+# fzf-powered history search (if available), newest first
+if command -v fzf >/dev/null 2>&1; then
+  hist() { fc -lnr 1 | fzf --no-sort --height 40% | sed 's/^[[:space:]]*//'; }
+else
+  hist() { history | less; }
+fi
+
+# ======================================================================
+# Networking and Processes
+# ======================================================================
+alias myip='curl -s https://ifconfig.me || curl -s https://api.ipify.org'
+alias localip='hostname -I'
+alias ping='ping -c 5'
+
+# Listening ports (ss preferred over netstat); run with sudo to see other users' processes
+if command -v ss >/dev/null 2>&1; then
+  alias ports='ss -tulpen'
+else
+  alias ports='netstat -tulpen'
+fi
+
+# Top alternative
+if command -v htop >/dev/null 2>&1; then
+  alias top='htop'
+fi
+
+# Process search
+alias psg='ps aux | grep'
+
+# Memory and CPU
+alias free='free -h'
+alias meminfo='cat /proc/meminfo'
+alias cpuinfo='cat /proc/cpuinfo'
+alias load='uptime'
+
+# Top 10 memory users
+alias psmem10='ps aux --sort=-%mem | head -n 11'
+
+# Process tree (a separate name: aliasing ps itself changes every ps call)
+alias psf='ps auxf'
+
+# Process search that keeps the header line
+alias psgh='ps aux | grep -v grep | grep -i -e VSZ -e'
+
+# Open network connections with process names
+alias connections='sudo lsof -n -P -i +c 15'
+
+# Firewall rules with packet counters
+alias ipt='sudo iptables -nvL'
+alias nftl='sudo nft list ruleset'
+
+# Mounted filesystems as a table (a separate name: "alias mount=..." would break mounting)
+alias mnt='mount | column -t'
+
+# 100 large pings, 5 per second
+alias fastping='ping -c 100 -s 1400 -i 0.2'
+
+# Kernel errors with readable timestamps
+alias dmesg_err='sudo dmesg -T --color=always --level=emerg,alert,crit,err'
+
+# fail2ban SSH jail status
+alias fail2ban-ssh='sudo fail2ban-client status sshd'
+
+# Show a config file without comments and empty lines
+alias nocomment='grep -Ev '\''^[[:space:]]*(#|$)'\'''
+
+# Regular (non-system) users
+lsuser() {
+  awk -F: -v min="$(awk '/^UID_MIN/ {print $2}' /etc/login.defs)" \
+    '$3 >= min && $3 < 65534 {print $1}' /etc/passwd | sort
+}
+
+# Top 25 processes by memory: command, %MEM, RSS in MB
+top25() {
+  ps -A --sort=-rss -o comm,pmem,rss | head -n 26 | \
+    awk 'NR==1 {printf "%-26s%-8s%s\n", $1, $2, "RSS(MB)"; next}
+         {printf "%-26s%-8s%.2f\n", $1, $2, $3/1024}'
+}
+
+# Swap usage per process (kB), largest first
+swapinfo() {
+  for file in /proc/*/status; do
+    awk '/^Name/ {n=$2} /^VmSwap/ {print n, $2}' "$file" 2>/dev/null
+  done | sort -k2 -nr | head -n 20
+}
+
+# ======================================================================
+# Ports, HTTP and TLS
+# ======================================================================
+# What listens on a TCP port (run with sudo to see other users' processes)
+portcheck() {
+  [ -n "$1" ] || { echo "Usage: portcheck <port>" >&2; return 2; }
+  ss -ltnp "sport = :$1"
+}
+
+# HTTP status code only: httpstatus https://example.com (add -L to follow redirects)
+httpstatus() { curl -s -o /dev/null -w '%{http_code}\n' "$@"; }
+
+# Where the time goes in one request
+curltime() {
+  curl -s -o /dev/null -w '    DNS lookup:  %{time_namelookup}s
+   TCP connect:  %{time_connect}s
+ TLS handshake:  %{time_appconnect}s
+    First byte:  %{time_starttransfer}s
+         Total:  %{time_total}s
+     HTTP code:  %{http_code}
+' "$@"
+}
+
+# Expiry date of a server's TLS certificate: tlsexpiry example.com or example.com:8443
+tlsexpiry() {
+  local host=${1%%:*} port=${1##*:}
+  [ "$host" = "$port" ] && port=443
+  openssl s_client -servername "$host" -connect "$host:$port" </dev/null 2>/dev/null |
+    openssl x509 -noout -enddate
+}
+
+# ======================================================================
+# Search and Find
+# ======================================================================
+# Fast recursive search (ripgrep preferred)
+if command -v rg >/dev/null 2>&1; then
+  alias ag='rg -n --no-heading --color=always'
+else
+  alias ag='grep -Rin --color=always'
+fi
+
+# Find files by name
+alias ff='find . -name'
+alias ffi='find . -iname'
+
+# Find files by name, case-insensitive, with optional extra find arguments: f conf -type f
+f() { find . -iname "*$1*" "${@:2}"; }
+
+# Recursively grep for a pattern, with optional extra grep options: r needle -l
+r() { grep "$1" "${@:2}" -R .; }
+
+# ======================================================================
+# Git
+# ======================================================================
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gl='git pull'
+alias gd='git diff'
+alias gb='git branch'
+alias gco='git checkout'
+alias glog='git log --oneline --graph --decorate'
+alias gds='git diff --staged'                        # what the next commit contains
+alias gpf='git push --force-with-lease'              # force push, unless someone else pushed
+alias gundo='git reset --soft HEAD~1'                # undo the last commit, keep its changes staged
+alias groot='cd "$(git rev-parse --show-toplevel)"'  # cd to the top of the repository
+
+# Add everything, commit with a message (default "update") and push
+gp() {
+  git add -A && git commit -m "${1:-update}" && git push
+}
+
+# Update all Git repositories in the current directory
+update_all_repos() {
+  echo "Updating all Git repositories in current directory..."
+  for i in */.git; do
+    if [[ -d "$i" ]]; then
+      repo_name=$(basename "$(dirname "$i")")
+      echo "Updating: $repo_name"
+      (cd "$(dirname "$i")" && git pull)
+    fi
+  done
+  echo "Done!"
+}
+
+# ======================================================================
+# Docker
+# ======================================================================
+if command -v docker >/dev/null 2>&1; then
+  alias d='docker'
+  alias dc='docker compose'
+  alias dps='docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"'
+  alias dpsa='docker ps -a'
+  alias di='docker images'
+  alias drm='docker rm'
+  alias drmi='docker rmi'
+  alias dstopall='docker stop $(docker ps -q) 2>/dev/null || true'
+  alias drmfall='docker rm -f $(docker ps -aq) 2>/dev/null || true'
+  alias dlogf='docker logs --follow --tail 200'
+  alias dcu='docker compose up -d'
+  alias dcd='docker compose down'
+  alias dclf='docker compose logs --follow --tail 200'
+fi
+
+# IP address of a container, one line per network: dip web
+dip() {
+  docker inspect --format '{{range $n, $c := .NetworkSettings.Networks}}{{$n}} {{$c.IPAddress}}{{"\n"}}{{end}}' "$@"
+}
+
+# Enter a container with bash, or sh when the image has no bash
+dbash() {
+  if [ $# -eq 1 ]; then
+    if docker exec "$1" sh -c 'command -v bash' >/dev/null 2>&1; then
+      docker exec -it "$1" bash
+    else
+      docker exec -it "$1" sh
+    fi
+  else
+    echo "Usage: dbash <container_name_or_id>"
+  fi
+}
+
+# ======================================================================
+# Kubernetes
+# ======================================================================
+if command -v kubectl >/dev/null 2>&1; then
+  alias k='kubectl'
+
+  # Get
+  alias kg='kubectl get'
+  alias kgp='kubectl get pods'
+  alias kgd='kubectl get deployments'
+  alias kgs='kubectl get services'
+  alias kgn='kubectl get nodes'
+  alias kga='kubectl get all'
+  alias kgpa='kubectl get pods -A'          # all namespaces
+  alias kgns='kubectl get namespaces'
+
+  # Describe, logs, exec
+  alias kd='kubectl describe'
+  alias kdp='kubectl describe pod'
+  alias kdd='kubectl describe deployment'
+  alias kl='kubectl logs'
+  alias klf='kubectl logs -f'
+  alias kex='kubectl exec -it'              # kex deploy/web -- sh
+
+  # Apply and create
+  alias ka='kubectl apply -f'
+  alias kc='kubectl create'
+
+  # Contexts and namespaces
+  alias kgctx='kubectl config get-contexts'
+  alias kctx='kubectl config use-context'
+  alias kn='kubectl config set-context --current --namespace'   # kn lab
+
+  # Rollouts, events, port forwarding
+  alias kroll='kubectl rollout status'                 # kroll deploy/web
+  alias krestart='kubectl rollout restart'             # krestart deploy/web
+  alias kev='kubectl get events --sort-by=.metadata.creationTimestamp'
+  alias kpf='kubectl port-forward'                     # kpf deploy/web 8080:80
+
+  # Tab completion, also for the "k" alias (needs the bash-completion package)
+  source <(kubectl completion bash)
+  complete -o default -F __start_kubectl k
+fi
+
+# Pods that are not fine: not Running/Completed, or Running but not all containers ready
+kbadpods() {
+  kubectl get pods -A --no-headers |
+    awk '{split($3, r, "/"); if ($4 != "Completed" && ($4 != "Running" || r[1] != r[2])) print}'
+}
+
+# Debug container in a running pod; with a container name it sees that container's processes
+kdebug() {
+  [ -n "$1" ] || { echo "Usage: kdebug <pod> [container] [image]" >&2; return 2; }
+  kubectl debug -it "$1" --image="${3:-busybox:1.36}" ${2:+--target="$2"}
+}
+
+# ======================================================================
+# Service Management (systemd)
+# ======================================================================
+alias sctl='sudo systemctl'
+alias sstart='sudo systemctl start'
+alias sstop='sudo systemctl stop'
+alias srestart='sudo systemctl restart'
+alias sstatus='sudo systemctl status'
+alias senable='sudo systemctl enable'
+alias sdisable='sudo systemctl disable'
+alias failedservices='systemctl --failed'           # units that failed
+alias journalerrors='journalctl -p err..alert -b'   # errors since the last boot
+
+# ======================================================================
+# Log Viewing
+# ======================================================================
+alias logs='sudo journalctl -f'
+alias lognginx='sudo tail -f /var/log/nginx/error.log'
+
+# Auth and Apache logs live in different places on Debian/Ubuntu and RHEL
+if [ -d /etc/apache2 ]; then
+  alias logapache='sudo tail -f /var/log/apache2/error.log'
+else
+  alias logapache='sudo tail -f /var/log/httpd/error_log'
+fi
+if [ -f /var/log/secure ]; then
+  alias logauth='sudo tail -f /var/log/secure'
+else
+  alias logauth='sudo tail -f /var/log/auth.log'
+fi
+
+# Colorized log viewer (needs ccze: apt install ccze / dnf install ccze from EPEL)
+log() { ccze -A < "$1" | less -R; }
+
+# Follow a log and highlight a pattern: tcolor /var/log/syslog error
+tcolor() { tail -f -n 5000 "$1" | perl -pe "s/$2/\e[1;31;43m$&\e[0m/g"; }
+
+# Read a file with Vim's less mode (syntax highlighting, vim keys)
+vless() { "$(ls /usr/share/vim/vim*/macros/less.sh 2>/dev/null | head -n 1)" "$@"; }
+
+# ======================================================================
+# Package Management
+# ======================================================================
+# apt (Debian/Ubuntu)
+alias aptup='sudo apt update && sudo apt upgrade'
+alias aptin='sudo apt install'
+alias aptrm='sudo apt remove'
+alias aptsearch='apt search'
+
+# yum/dnf (RHEL/CentOS)
+alias yumup='sudo yum update'
+alias yumin='sudo yum install'
+
+# ======================================================================
+# File Permissions and SSH
+# ======================================================================
+alias 644='chmod 644'
+alias 755='chmod 755'
+alias mx='chmod +x'
+alias sshkey='cat ~/.ssh/id_*.pub'
+alias sshgen='ssh-keygen -t ed25519'
+
+# ======================================================================
+# Web Servers
+# ======================================================================
+alias nginx-test='sudo nginx -t'
+alias nginx-reload='sudo systemctl reload nginx'
+alias apache-test='sudo apachectl configtest'
+if [ -d /etc/apache2 ]; then
+  alias apache-reload='sudo systemctl reload apache2'
+else
+  alias apache-reload='sudo systemctl reload httpd'
+fi
+
+# ======================================================================
+# macOS
+# ======================================================================
+if [ "$(uname -s)" = Darwin ]; then
+  alias showfiles='defaults write com.apple.finder AppleShowAllFiles YES; killall Finder'
+  alias hidefiles='defaults write com.apple.finder AppleShowAllFiles NO; killall Finder'
+  alias desktop='cd ~/Desktop'
+  alias downloads='cd ~/Downloads'
+  alias documents='cd ~/Documents'
+  alias finder='open -a Finder'
+  alias flushdns='sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder'
+fi
+
+# ======================================================================
+# Development and Fun
+# ======================================================================
+alias py='python3'
+alias pip='pip3'
+alias npmls='npm list --depth=0'
+alias weather='curl wttr.in'
+alias wget='wget -c'             # Resume partial downloads
+
+# ======================================================================
+# Conditional Modern Replacements
+# ======================================================================
+# Debian/Ubuntu install bat and fd as batcat and fdfind
+command -v batcat >/dev/null 2>&1 && alias bat='batcat'
+command -v fdfind >/dev/null 2>&1 && alias fd='fdfind'
+
+# Syntax highlighting, but cat-like output: no pager, no line numbers or header
+if command -v bat >/dev/null 2>&1; then
+  alias cat='bat --paging=never --style=plain'
+fi
+
+# eza is the maintained fork of exa
+if command -v eza >/dev/null 2>&1; then
+  alias ls='eza'
+  alias ll='eza -la'
+  alias lt='eza -l --sort=modified'   # eza's -t takes a time field, so "ls -ltr" fails
+  alias tree='eza --tree'
+fi
