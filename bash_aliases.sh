@@ -1,5 +1,3 @@
-# ~/.bash_aliases — all aliases and functions from "Bash Aliases and Functions"
-# https://blog.corneschi.ro/posts/bash-aliases-functions/
 # Load it from ~/.bashrc:  [ -f ~/.bash_aliases ] && source ~/.bash_aliases
 
 # ======================================================================
@@ -650,6 +648,18 @@ alias sdisable='sudo systemctl disable'
 alias failedservices='systemctl --failed'           # units that failed
 alias journalerrors='journalctl -p err..alert -b'   # errors since the last boot
 
+# List services
+alias svcrun='systemctl list-units --type=service --state=running'    # running now
+alias svcall='systemctl list-units --type=service --all'              # loaded, any state
+alias svcfiles='systemctl list-unit-files --type=service'             # installed: enabled/disabled/static
+
+# Services whose name contains a word, any state: svc cron
+svc() {
+  [ -n "$1" ] || { echo "Usage: svc <name>" >&2; return 2; }
+  systemctl list-units --type=service --all "*$1*"
+  systemctl list-unit-files --type=service "*$1*"
+}
+
 # ======================================================================
 # Log Viewing
 # ======================================================================
@@ -673,9 +683,6 @@ log() { ccze -A < "$1" | less -R; }
 
 # Follow a log and highlight a pattern: tcolor /var/log/syslog error
 tcolor() { tail -f -n 5000 "$1" | perl -pe "s/$2/\e[1;31;43m$&\e[0m/g"; }
-
-# Read a file with Vim's less mode (syntax highlighting, vim keys)
-vless() { "$(ls /usr/share/vim/vim*/macros/less.sh 2>/dev/null | head -n 1)" "$@"; }
 
 # ======================================================================
 # Package Management
