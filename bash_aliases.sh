@@ -276,6 +276,7 @@ fi
 # Networking and Processes
 # ======================================================================
 alias myip='curl -s https://ifconfig.me || curl -s https://api.ipify.org'
+alias whatsmyip='curl -s https://ipecho.net/plain; echo'
 alias localip='hostname -I'
 alias ping='ping -c 5'
 
@@ -296,12 +297,17 @@ alias psg='ps aux | grep'
 
 # Memory and CPU
 alias free='free -h'
-alias meminfo='cat /proc/meminfo'
+alias meminfo='free -m -l -t'      # MB, with low/high and total lines
 alias cpuinfo='cat /proc/cpuinfo'
 alias load='uptime'
 
 # Top 10 memory users
+alias psmem='ps aux --sort=-%mem'
 alias psmem10='ps aux --sort=-%mem | head -n 11'
+
+# Top CPU users
+alias pscpu='ps aux --sort=-%cpu'
+alias pscpu10='ps aux --sort=-%cpu | head -n 11'
 
 # Process tree (a separate name: aliasing ps itself changes every ps call)
 alias psf='ps auxf'
@@ -450,14 +456,58 @@ if command -v docker >/dev/null 2>&1; then
   alias dstopall='docker stop $(docker ps -q) 2>/dev/null || true'
   alias drmfall='docker rm -f $(docker ps -aq) 2>/dev/null || true'
   alias dlogf='docker logs --follow --tail 200'
+  alias dei='docker exec -it'                    # dei web sh
+  alias drim='docker run --rm -it'               # throwaway container: drim alpine sh
+  alias ddf='docker system df'                   # disk used by images, containers, volumes
+  alias dvl='docker volume ls'
+  alias dnl='docker network ls'
   alias dcu='docker compose up -d'
   alias dcd='docker compose down'
   alias dclf='docker compose logs --follow --tail 200'
+  alias dcps='docker compose ps'
+  alias dcstop='docker compose stop'
+  alias dcstart='docker compose start'
+  alias dcrestart='docker compose restart'
+  alias dcpull='docker compose pull'
+  alias dcbuild='docker compose build'
+  alias dcls='docker compose ls -a'             # all projects, also stopped ones
+  alias dce='docker compose exec'                # dce web sh
+  alias dcub='docker compose up -d --build'      # rebuild, then start
 fi
+
+# Shell in a container that has no bash (Alpine, BusyBox): dsh web
+dsh() { docker exec -it "$1" sh; }
 
 # IP address of a container, one line per network: dip web
 dip() {
   docker inspect --format '{{range $n, $c := .NetworkSettings.Networks}}{{$n}} {{$c.IPAddress}}{{"\n"}}{{end}}' "$@"
+}
+
+# ======================================================================
+# All Compose Projects at Once
+# ======================================================================
+# Every project (also stopped ones), as one alias per command
+alias dcstop-all='docker compose ls -a -q 2>/dev/null | xargs -r -I {} docker compose -p {} stop'
+alias dcstart-all='docker compose ls -a -q 2>/dev/null | xargs -r -I {} docker compose -p {} start'
+alias dcrestart-all='docker compose ls -a -q 2>/dev/null | xargs -r -I {} docker compose -p {} restart'
+alias dcdown-all='docker compose ls -a -q 2>/dev/null | xargs -r -I {} docker compose -p {} down'
+
+# The same as a function, with an optional name filter: dcall stop / dcall stop app
+dcall() {
+  [ -n "$1" ] || { echo "Usage: dcall <stop|start|restart|down|ps> [name filter]" >&2; return 2; }
+  local p
+  for p in $(docker compose ls -a -q ${2:+--filter name="$2"}); do
+    echo "== $p"
+    docker compose -p "$p" "$1"
+  done
+}
+# Start every compose project below the current directory
+dcup-all() {
+  find . \( -name compose.yaml -o -name compose.yml -o -name docker-compose.yaml -o -name docker-compose.yml \) |
+    while IFS= read -r f; do
+      echo "== $f"
+      (cd "$(dirname "$f")" && docker compose up -d)
+    done
 }
 
 # Enter a container with bash, or sh when the image has no bash
@@ -529,6 +579,34 @@ kdebug() {
   kubectl debug -it "$1" --image="${3:-busybox:1.36}" ${2:+--target="$2"}
 }
 
+# kswitch: numbered list of contexts; kswitch <name>: switch directly.
+# Asks again before switching to a context with "prod" in its name.
+kswitch() {
+  local ctx=$1 answer COLUMNS=1 PS3="Switch to (number, Ctrl+D to cancel): "   # COLUMNS=1: one per line
+  if [ -z "$ctx" ]; then
+    echo "Current: $(kubectl config current-context 2>/dev/null)"
+    select ctx in $(kubectl config get-contexts -o name); do
+      [ -n "$ctx" ] && break
+      echo "Not in the list" >&2
+    done
+    [ -n "$ctx" ] || return 1
+  fi
+  case "$ctx" in
+    *prod*) read -rp "Switch to $ctx? [y/N] " answer
+            [ "$answer" = y ] || { echo "Cancelled"; return 1; } ;;
+  esac
+  kubectl config use-context "$ctx"
+}
+
+# ======================================================================
+# Terraform
+# ======================================================================
+alias tfip='terraform init && terraform plan'
+alias tfipa='terraform init && terraform plan && terraform apply'
+alias tfipaa='terraform init && terraform plan && terraform apply -auto-approve'   # no confirmation
+alias tfid='terraform init && terraform destroy'
+alias tfidaa='terraform init && terraform destroy -auto-approve'                  # no confirmation
+
 # ======================================================================
 # Service Management (systemd)
 # ======================================================================
@@ -574,6 +652,7 @@ vless() { "$(ls /usr/share/vim/vim*/macros/less.sh 2>/dev/null | head -n 1)" "$@
 # ======================================================================
 # apt (Debian/Ubuntu)
 alias aptup='sudo apt update && sudo apt upgrade'
+alias update='sudo apt update && sudo apt upgrade -y'   # no confirmation
 alias aptin='sudo apt install'
 alias aptrm='sudo apt remove'
 alias aptsearch='apt search'
