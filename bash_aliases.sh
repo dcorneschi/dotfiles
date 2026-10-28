@@ -50,8 +50,11 @@ alias du='du -h'
 # Show PATH entries one per line
 alias path='printf "%s\n" "$PATH" | tr : "\n"'
 
-# Reload shell config (tries common locations)
-alias reload='source ~/.bashrc 2>/dev/null || source ~/.bash_profile 2>/dev/null || source ~/.profile 2>/dev/null'
+# Start a fresh shell with the new config: removed aliases, functions and variables are gone
+reload() {
+  history -a                  # save this session's commands first
+  exec "$BASH" -il
+}
 
 # Quick edit common files
 alias ebash='${EDITOR:-nano} ~/.bashrc'
@@ -120,7 +123,7 @@ HISTCONTROL=ignoreboth                         # Skip duplicates and commands st
 HISTIGNORE='ls:bg:fg:history'                  # Never record these
 
 # Share history between open terminals: save each command right away (-a), read others' (-n).
-# The case check keeps "reload" from adding it again every time.
+# The case check keeps "source ~/.bashrc" from adding it again every time.
 case "$PROMPT_COMMAND" in
   *"history -a; history -n"*) ;;
   *) PROMPT_COMMAND="history -a; history -n${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
