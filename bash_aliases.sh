@@ -1,3 +1,5 @@
+# ~/.bash_aliases — all aliases and functions from "Bash Aliases and Functions"
+# https://blog.corneschi.ro/posts/bash-aliases-functions/
 # Load it from ~/.bashrc:  [ -f ~/.bash_aliases ] && source ~/.bash_aliases
 
 # ======================================================================
@@ -441,6 +443,34 @@ update_all_repos() {
   done
   echo "Done!"
 }
+
+# Make the working copy look like a fresh clone: the current branch is reset to its
+# upstream, local commits are dropped, untracked AND ignored files are deleted.
+# Other local branches and stashes stay. Asks for FRESH first.
+gfresh() {
+  local top up confirmation
+  top=$(git rev-parse --show-toplevel) || return
+  up=$(git -C "$top" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null) ||
+    { echo "No upstream for the current branch" >&2; return 1; }
+  git -C "$top" fetch --prune --quiet || return
+  printf 'Reset to %s and delete untracked and ignored files in %s:\n' "$up" "$top"
+  git -C "$top" status --short --ignored
+  git -C "$top" log --oneline "$up..HEAD"
+  printf 'Type FRESH to continue: '
+  read -r confirmation
+  [ "$confirmation" = "FRESH" ] || { printf 'Cancelled.\n'; return 1; }
+  git -C "$top" reset --hard "$up" && git -C "$top" clean -fdx
+}
+
+# GitHub CLI
+if command -v gh >/dev/null 2>&1; then
+  alias ghpr='gh pr view --web'
+  alias ghprs='gh pr list'
+  alias ghissues='gh issue list'
+  alias ghrepo='gh repo view --web'
+  alias ghruns='gh run list'
+  alias ghwatch='gh run watch'
+fi
 
 # ======================================================================
 # Docker
